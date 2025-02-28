@@ -138,7 +138,6 @@ void handleState() {
             currentState = FOUND;
             disconnectBLE();
             setDiscoverability(0);
-            // nonDiscoverable = 1;
             lost_mode_triggered = 0;
         }
     }
@@ -146,7 +145,6 @@ void handleState() {
     if (currentState == LOST && lost_mode_triggered) {
         sendLostMessage();
         setDiscoverability(1);
-        // nonDiscoverable = 1;
         lost_mode_triggered = 0;
     }
 }
