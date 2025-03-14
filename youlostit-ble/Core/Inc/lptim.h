@@ -2,7 +2,7 @@
  * lptim.h
  *
  *  Created on: Mar 13, 2025
- *      Author: angel
+ *      Author: alexis
  */
 
 #ifndef INC_LPTIM_H_

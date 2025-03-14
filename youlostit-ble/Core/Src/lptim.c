@@ -2,7 +2,7 @@
  * lptim1.c
  *
  *  Created on: Mar 13, 2025
- *      Author: angel
+ *      Author: alexis
  */
 
 #include "lptim.h"
