@@ -19,7 +19,7 @@
 // Register Addresses
 #define LSM6DSL_CTRL1_XL   0x10  // Accelerometer control register
 #define LSM6DSL_OUTX_L_XL  0x28  // X-axis acceleration output register (LSB)
-#define LSM6DSL_CTRL3_C    0x12  // Control register 3
+#define LSM6DSL_INT1_CTRL  0x0D  // Interrupt control register
 
 // Bit Masks
 #define LSM6DSL_AUTO_INC   0x80  // Enable auto-increment for register addresses
@@ -29,7 +29,7 @@
 
 // Configuration values
 #define CTRL1_XL_CONFIG  0x50  // Example: 104 Hz, 2g, anti-aliasing filter
-#define CTRL3_C_CONFIG   0x04  // Example: Enable block data update
+#define INT1_CTRL_CONFIG  0x01  // Example: Enable accelerometer data ready interrupt on INT1
 
 // Function Prototypes
 void lsm6dsl_init();

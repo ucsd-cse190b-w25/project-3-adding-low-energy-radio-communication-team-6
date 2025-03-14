@@ -28,14 +28,7 @@
 /* Include lsm6dsl driver */
 #include "lsm6dsl.h"
 
-// Redefine the libc _write() function so you can use printf in your code
-int _write(int file, char *ptr, int len) {
-    int i = 0;
-    for (i = 0; i < len; i++) {
-        ITM_SendChar(*ptr++);
-    }
-    return len;
-}
+#include "lptim.h"
 
 #define STUDENT_ID 0x0C1F   // 3103 16-bit student ID
 #define PREAMBLE 0x99       // 8-bit preamble (10011001 in binary)
@@ -44,24 +37,21 @@ int _write(int file, char *ptr, int len) {
 
 int dataAvailable = 0;
 
-// Define timing intervals
-#define LED_TOGGLE_INTERVAL 50     // LED toggle every 50 ms
-
 SPI_HandleTypeDef hspi3;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI3_Init(void);
 
-// Define constants
-#define MESSAGE_SEND_INTERVAL 200  // Send message every 200 * 50ms = 10s
-#define LOST_MODE_THRESHOLD 1200   // Lost mode after 1200 * 50ms = 60s
+// Define timing intervals
+// #define LED_TOGGLE_INTERVAL 50     // LED toggle every 50 ms
+#define MESSAGE_SEND_INTERVAL 1  // Send message every 1 * 10000ms = 10s
+#define LOST_MODE_THRESHOLD 6  // Lost mode after 6 * 10000ms = 60s
 
 volatile uint32_t inactivity_counter = 0;
 volatile uint32_t message_counter = 0;
 volatile uint8_t lost_mode_triggered = 0;
 volatile uint32_t lost_seconds_counter = 0;
-
 
 enum state { FOUND, LOST };
 enum state currentState = FOUND;
@@ -84,30 +74,32 @@ int isMoving() {
     return (x_diff > 500 || y_diff > 500 || z_diff > 500);
 }
 
-// Send BLE lost message
-void sendLostMessage() {
-	 // Define parts for the message
-	 unsigned char pt_1[50];
-	 unsigned char pt_2[30]; // For seconds part, adjust size as necessary
-
-	 // Part 1: "PrivTag "
-	 snprintf((char*)pt_1, sizeof(pt_1), "Imlosin ");
-	 updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen((char*)pt_1), pt_1);
-	 HAL_Delay(5);
-
-	 // Part 2: "<N> seconds"
-
-	 // lost_seconds_counter keeps track of the time in 50ms intervals, divide by 20 to convert to seconds
-
-	 snprintf((char*)pt_2, sizeof(pt_2), "%lu seconds missing", lost_seconds_counter / 20);
-	 updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen((char*)pt_2), pt_2);
+// Redefine the libc _write() function so you can use printf in your code
+int _write(int file, char *ptr, int len) {
+    int i = 0;
+    for (i = 0; i < len; i++) {
+        ITM_SendChar(*ptr++);
+    }
+    return len;
 }
 
-// TIM2 Interrupt Handler (Runs every 50ms)
-// TIM2 Interrupt Handler
-void TIM2_IRQHandler(void) {
-    if (TIM2->SR & TIM_SR_UIF) {  // Timer update interrupt flag
-        TIM2->SR &= ~TIM_SR_UIF;  // Clear flag
+
+// Send BLE lost message
+void sendLostMessage() {
+    unsigned char message[30]; // Adjust size as necessary
+    snprintf((char*)message, sizeof(message), "IMLOSIN %lus missing", lost_seconds_counter * 10);
+    updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen((char*)message), message);
+}
+
+
+// LPTIM1 Interrupt Handler (Runs every 10000ms)
+void LPTIM1_IRQHandler(void) {
+    if (LPTIM1->ISR & LPTIM_ISR_ARRM) { // Check if autoreload match occurred
+    	LPTIM1->ICR |= LPTIM_ICR_ARRMCF; // Clear the interrupt flag
+
+        // Toggle LEDs every 10 seconds
+        // GPIOA->ODR ^= GPIO_ODR_OD5;  // Toggle LED 1 (PA5)
+        // GPIOB->ODR ^= GPIO_ODR_OD14; // Toggle LED 2 (PB14)
 
         if (currentState == FOUND) {
             inactivity_counter++;
@@ -115,7 +107,7 @@ void TIM2_IRQHandler(void) {
                 currentState = LOST;
                 lost_mode_triggered = 1;  // First BLE message immediately
                 message_counter = 0;
-                lost_seconds_counter = 0;  // Reset lost seconds counter when entering LOST state
+                lost_seconds_counter = 0;  // Reset lost seconds counter
             }
         } else if (currentState == LOST) {
             lost_seconds_counter++; // Increment seconds counter in LOST mode
@@ -125,6 +117,7 @@ void TIM2_IRQHandler(void) {
                 message_counter = 0;
             }
         }
+        //LPTIM1->CR |= LPTIM_CR_CNTSTRT;
     }
 }
 
@@ -156,9 +149,14 @@ int main(void) {
     i2c_init();
     lsm6dsl_init();
     leds_init();
-    timer_init(TIM2);
-    timer_set_ms(TIM2, 50); // Set timer for 50ms
-    HAL_NVIC_EnableIRQ(TIM2_IRQn);  // Enable TIM2 interrupt
+    lptim1_init(LPTIM1);
+
+    lptim1_set_ms(LPTIM1, 20000);
+
+    // Enable LPTIM1 interrupt in NVIC
+    //LPTIM1_IRQHandler();
+    NVIC_SetPriority(LPTIM1_IRQn, 1);
+    HAL_NVIC_EnableIRQ(LPTIM1_IRQn);
 
     MX_GPIO_Init();
     MX_SPI3_Init();
@@ -170,11 +168,51 @@ int main(void) {
 
     ble_init();
     HAL_Delay(10);
-
     setDiscoverability(0);
 
     while (1) {
         handleState();
+
+             if (currentState == FOUND) {
+            	 // Disable all peripherals on APB1 (except I2C2 and TIM2)
+            	 RCC->APB1ENR1 &= ~(RCC_APB1ENR1_OPAMPEN | RCC_APB1ENR1_DAC1EN | RCC_APB1ENR1_TIM2EN |
+            	                    RCC_APB1ENR1_PWREN | RCC_APB1ENR1_CAN1EN | RCC_APB1ENR1_I2C3EN |
+            	                    RCC_APB1ENR1_I2C1EN | RCC_APB1ENR1_UART5EN | RCC_APB1ENR1_UART4EN |
+            	                    RCC_APB1ENR1_USART3EN | RCC_APB1ENR1_USART2EN | RCC_APB1ENR1_SPI2EN |
+            	                    RCC_APB1ENR1_WWDGEN | RCC_APB1ENR1_TIM7EN | RCC_APB1ENR1_TIM6EN |
+            	                    RCC_APB1ENR1_TIM5EN | RCC_APB1ENR1_TIM4EN | RCC_APB1ENR1_TIM3EN);
+
+            	 //standbyBle();
+
+            	 RCC->APB1ENR2 = 0;
+            	 RCC->APB2ENR = 0;
+            	 RCC->AHB2ENR = 0;
+
+            	 // Disable I2C clock
+            	 RCC->APB1ENR1 &= ~RCC_APB1ENR1_I2C2EN;
+
+            	 // Disable SPI clock
+            	 RCC->APB1ENR1 &= ~RCC_APB1ENR1_SPI3EN;
+
+                 // If in FOUND state and not performing tasks, enter light sleep mode
+            	 SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk; // Enable deep sleep
+
+                 HAL_SuspendTick();  // Suspend system tick before sleeping
+                 __WFI();            // Wait for interrupt (enters sleep mode)
+                 HAL_ResumeTick();   // Resume system tick after waking up
+
+                 // Re-enable peripheral clocks after waking up
+                 RCC->APB1ENR1 |= (RCC_APB1ENR1_I2C2EN | RCC_APB1ENR1_SPI3EN);
+
+                 // Re-enable LPTIM1 clock if needed after wake-up
+                 //RCC->APB1ENR1 |= RCC_APB1ENR1_LPTIM1EN;
+                 //LPTIM1->CR |= LPTIM_CR_ENABLE;  // Ensure it's enabled
+
+                 // Re-enable GPIO clocks
+                 RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN |
+                                  RCC_AHB2ENR_GPIOCEN | RCC_AHB2ENR_GPIODEN |
+                                  RCC_AHB2ENR_GPIOEEN);
+             }
 
         if (!nonDiscoverable && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port, BLE_INT_Pin)) {
             catchBLE();

@@ -53,4 +53,3 @@
 
  void setDiscoverability(uint8_t mode);
  #endif
-

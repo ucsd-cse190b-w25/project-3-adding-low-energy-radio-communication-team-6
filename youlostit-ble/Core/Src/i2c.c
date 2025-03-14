@@ -32,7 +32,8 @@ void i2c_init() {
 
     // Enable Pull-up resistors for PB10 and PB11
     GPIOB->PUPDR &= ~(GPIO_PUPDR_PUPD10 | GPIO_PUPDR_PUPD11);
-    GPIOB->PUPDR |= (GPIO_PUPDR_PUPD10_1 | GPIO_PUPDR_PUPD11_1);
+    //Setting them to be pull up
+    GPIOB->PUPDR |= (GPIO_PUPDR_PUPD10_0 | GPIO_PUPDR_PUPD11_0);
 
     // Set speed for PB10 and PB11
     GPIOB->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEED10 | GPIO_OSPEEDR_OSPEED11);
@@ -41,12 +42,13 @@ void i2c_init() {
     // Enable interrupts for TX, RX, and Transfer Complete
     I2C2->CR1 |= (I2C_CR1_TXIE | I2C_CR1_RXIE | I2C_CR1_TCIE);
 
+    //Incorrect Calcution: our calculates to around 100 when it should be 400
     // Configure Timing Register for 400 kHz I2C Fast Mode
-    I2C2->TIMINGR = (0U << I2C_TIMINGR_PRESC_Pos) | // Prescaler = 0, using 4 MHz clock
-                    (0xC7 << I2C_TIMINGR_SCLL_Pos) | // SCL low period = 199 (Tlow)
-                    (0xC3 << I2C_TIMINGR_SCLH_Pos) | // SCL high period = 195 (Thigh)
-                    (0x02 << I2C_TIMINGR_SDADEL_Pos) | // Data setup delay = 2
-                    (0x04 << I2C_TIMINGR_SCLDEL_Pos); // Data hold delay = 4
+    I2C2->TIMINGR = (7U << I2C_TIMINGR_PRESC_Pos) | // Prescaler = 0, using 4 MHz clock
+                    (11U << I2C_TIMINGR_SCLL_Pos) | // SCL low period = 199 (Tlow)
+                    (11U << I2C_TIMINGR_SCLH_Pos) | // SCL high period = 195 (Thigh)
+                    (1U << I2C_TIMINGR_SDADEL_Pos) | // Data setup delay = 2
+                    (2U << I2C_TIMINGR_SCLDEL_Pos); // Data hold delay = 4
 
     // Enable I2C2 Peripheral
     I2C2->CR1 |= I2C_CR1_PE;
@@ -57,7 +59,6 @@ uint8_t i2c_transaction(uint8_t address, uint8_t dir, uint8_t* data, uint8_t len
 
     while ((I2C2->ISR & I2C_ISR_BUSY) && timeout_counter--) {
         if (timeout_counter == 0) {
-            printf("I2C busy timeout\n");
             return 0; // Timeout error
         }
     }

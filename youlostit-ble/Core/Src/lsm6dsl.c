@@ -18,18 +18,15 @@ void lsm6dsl_init() {
     // Send WHO_AM_I register address
     return_value = i2c_transaction(LSM6DSL_I2C_ADDR, 0, &who_am_i, 1);
     if (return_value != 1) {
-        printf("WHO_AM_I send failed\n");
         return;
     }
 
     // Read WHO_AM_I register value
     return_value = i2c_transaction(LSM6DSL_I2C_ADDR, 1, &check_value, 1);
     if (return_value != 1) {
-        printf("WHO_AM_I receive failed\n");
         return;
     }
 
-    printf("WHO_AM_I: 0x%X\n", check_value);
 
     uint8_t config_data[2];  // Buffer to store register address and value
     uint8_t ret;             // Variable to store return status of I2C transactions
@@ -41,18 +38,16 @@ void lsm6dsl_init() {
     // Send configuration to the LSM6DSL sensor via I2C
     ret = i2c_transaction(LSM6DSL_I2C_ADDR, 0, config_data, 2);
     if (ret != 1) {
-        printf("Accelerometer configuration failed\n");
         return;
     }
 
-    // Configure another register (CTRL3_C)
-    config_data[0] = LSM6DSL_CTRL3_C;  // Register address
-    config_data[1] = CTRL3_C_CONFIG;   // Configuration value
+    // Configure INT1_CTRL register
+    config_data[0] = LSM6DSL_INT1_CTRL;  // Register address
+    config_data[1] = INT1_CTRL_CONFIG;   // Configuration value
 
-    // Send second configuration to the sensor
+    // Send INT1_CTRL configuration to the sensor
     ret = i2c_transaction(LSM6DSL_I2C_ADDR, 0, config_data, 2);
     if (ret != 1) {
-        printf("CTRL3_C configuration failed\n");
         return;
     }
 }
@@ -63,12 +58,10 @@ void lsm6dsl_read_xyz(int16_t* x, int16_t* y, int16_t* z) {
 
     // Step 1: Write register address and read 6 bytes in one transaction
     if (i2c_transaction(LSM6DSL_I2C_ADDR, 0, &reg_address, 1) == 0) {
-        printf("Failed to write register address\n");
         return;
     }
 
     if (i2c_transaction(LSM6DSL_I2C_ADDR, 1, data, 6) == 0) {
-        printf("Failed to read accelerometer data\n");
         return;
     }
 
